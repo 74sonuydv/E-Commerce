@@ -81,9 +81,16 @@ const userOrders = async (req, res) => {
 
 const allOrders = async (req, res) => {
     try {
-        
+        const orders = await orderModel.find({});
+        res.status(200).json({
+            success: true,
+            orders
+        });
     } catch (error) {
-        
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
     }
 }
 
