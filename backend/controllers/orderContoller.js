@@ -1,5 +1,17 @@
 import orderModel from "../models/orderModel.js";
 import userModel from "../models/userModel.js";
+import Stripe from 'stripe'
+import 'dotenv/config'
+
+// Global variables 
+const currency = 'inr';
+const deliveryCharges = 10
+
+
+// gateway initialize
+const stripe = new Stripe (process.env.STRIPE_SECRET_KEY);
+
+
 
 // Placing order with COD method
 
@@ -39,8 +51,60 @@ const placeOrder = async (req, res) => {
 const placeOrderStripe = async (req, res) => {
     try {
         
+        const {userId, items, amount, address} = req.body;
+        const {origin} = req.headers;
+
+        const orderData = {
+            userId,
+            items,
+            address,
+            amount,
+            paymentMethod:"Stripe",
+            payment:false,
+            date: Date.now()
+        }
+
+        const newOrder = new orderModel(orderData);
+        await newOrder.save();
+
+        const line_items = items.map( (item) => ({
+            price_data:{
+                currency: currency,
+                product_data: {
+                    name: item.name
+                },
+                unit_amount: item.price * 100
+            },
+            quantity: item.quantity
+        }))
+
+        line_items.push({
+             price_data:{
+                currency: currency,
+                product_data: {
+                    name: 'Delivery Charges'
+                },
+                unit_amount: deliveryCharges * 100
+            },
+            quantity: 1
+        })
+
+        const session = await stripe.checkout.sessions.create({
+            success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
+            cancel_url: `${origin}/verify?false=true&orderId=${newOrder._id}`,
+            mode: 'payment',
+        });
+
+        res.status(200).json({
+            success:true,
+            session_url: session.url
+        });
+
     } catch (error) {
-        
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
     }
 }
 
@@ -59,10 +123,7 @@ const placeOrderRazorpay = async (req, res) => {
 const userOrders = async (req, res) => {
     try { 
         const {userId} = req.body;
-        console.log("HEllo");
         const orders = await orderModel.find ({userId});
-        console.log(orders);
-
         return res.status(200).json({
             success:true,
             orders
