@@ -1,6 +1,7 @@
 import orderModel from "../models/orderModel.js";
 import userModel from "../models/userModel.js";
-import Stripe from 'stripe'
+import Stripe from 'stripe';
+import Razorpay from 'razorpay'
 import 'dotenv/config'
 
 // Global variables 
@@ -10,6 +11,10 @@ const deliveryCharges = 10
 
 // gateway initialize
 const stripe = new Stripe (process.env.STRIPE_SECRET_KEY);
+const razorpayInstance = new Razorpay ({
+    key_id: process.env.RAZORPAY_KEY_SECRET,
+    key_secret: process.env.RAZORPAY_KEY_ID
+});
 
 
 
@@ -53,7 +58,6 @@ const placeOrderStripe = async (req, res) => {
         
         const {userId, items, amount, address} = req.body;
         const {origin} = req.headers;
-
         const orderData = {
             userId,
             items,
@@ -63,10 +67,10 @@ const placeOrderStripe = async (req, res) => {
             payment:false,
             date: Date.now()
         }
-
+        
         const newOrder = new orderModel(orderData);
         await newOrder.save();
-
+        
         const line_items = items.map( (item) => ({
             price_data:{
                 currency: currency,
@@ -77,7 +81,8 @@ const placeOrderStripe = async (req, res) => {
             },
             quantity: item.quantity
         }))
-
+        
+        console.log("hello");
         line_items.push({
              price_data:{
                 currency: currency,
@@ -91,7 +96,8 @@ const placeOrderStripe = async (req, res) => {
 
         const session = await stripe.checkout.sessions.create({
             success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
-            cancel_url: `${origin}/verify?false=true&orderId=${newOrder._id}`,
+            cancel_url: `${origin}/verify?success=false&orderId=${newOrder._id}`,
+            line_items,
             mode: 'payment',
         });
 
@@ -108,13 +114,78 @@ const placeOrderStripe = async (req, res) => {
     }
 }
 
+// Verify Stripe
+
+const verifyStripe = async(req, res) => {
+    try {
+        const {orderId, success, userId} = req.body;
+
+        if (success === 'true') {
+            await orderModel.findByIdAndUpdate(orderId, {payment: 'true'});
+            await userModel.findByIdAndUpdate(userId, {cartData: {}});
+            res.status(200).json({
+                success: true,
+            })
+        } else {
+            await orderModel.findByIdAndUpdate(orderId);
+            res.json({
+                success: false
+            });
+        }
+
+    } catch (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+}
+
 // Placing order with Razorpay method
 
 const placeOrderRazorpay = async (req, res) => {
     try {
-        
+        const {userId, items, amount, address} = req.body;
+
+        const orderData = {
+            userId,
+            items,
+            address,
+            amount,
+            paymentMethod:"Razorpay",
+            payment:false,
+            date: Date.now()
+        }
+            
+        const newOrder = new orderModel(orderData);
+        await newOrder.save();
+
+        const options = {
+            amount: amount * 100,
+            currency: currency.toUpperCase(),
+            receipt: newOrder._id.toString()
+        }
+
+        await razorpayInstance.order.create(options, (error, order) => {
+            if (error) {
+                return res.status(400).json({
+                    success: false,
+                    message:error
+                });
+            }
+            res.status(200).json({
+                success: true,
+                order,
+            });
+        })
+
+
+
     } catch (error) {
-        
+        return res.status(400).json({
+            success: false,
+            message:error.message
+        });
     }
 }
 
@@ -175,4 +246,4 @@ const updateStatus = async (req, res) => {
     }
 }
 
-export {placeOrder, placeOrderStripe, placeOrderRazorpay, userOrders, allOrders, updateStatus}
+export {placeOrder, placeOrderStripe, placeOrderRazorpay, userOrders, allOrders, updateStatus, verifyStripe}
