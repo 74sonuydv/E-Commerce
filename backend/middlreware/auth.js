@@ -3,7 +3,6 @@ import 'dotenv/config';
 
 const authUser = async (req, res, next) => {
     try {
-        console.log("HEllo");
         const {token} = req.headers;
 
         if (!token) {
