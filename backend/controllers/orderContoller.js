@@ -12,8 +12,8 @@ const deliveryCharges = 10
 // gateway initialize
 const stripe = new Stripe (process.env.STRIPE_SECRET_KEY);
 const razorpayInstance = new Razorpay ({
-    key_id: process.env.RAZORPAY_KEY_SECRET,
-    key_secret: process.env.RAZORPAY_KEY_ID
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
 
@@ -82,7 +82,6 @@ const placeOrderStripe = async (req, res) => {
             quantity: item.quantity
         }))
         
-        console.log("hello");
         line_items.push({
              price_data:{
                 currency: currency,
@@ -146,7 +145,6 @@ const verifyStripe = async(req, res) => {
 const verifyRazorpay = async(req, res) => {
     try {
         const {razorpay_order_id, userId} = req.body;
-
         const orderInfo = await razorpayInstance.orders.fetch(razorpay_order_id);
         if (orderInfo.status === 'paid') {
             await orderModel.findByIdAndUpdate(orderInfo.receipt, {payment: true});
@@ -186,21 +184,20 @@ const placeOrderRazorpay = async (req, res) => {
             payment:false,
             date: Date.now()
         }
-            
         const newOrder = new orderModel(orderData);
         await newOrder.save();
-
+        
         const options = {
             amount: amount * 100,
             currency: currency.toUpperCase(),
             receipt: newOrder._id.toString()
         }
-
-        await razorpayInstance.order.create(options, (error, order) => {
+        
+        razorpayInstance.orders.create(options, (error, order) => {
             if (error) {
-                return res.status(400).json({
+                return res.status(500).json({
                     success: false,
-                    message:error
+                    message:error.message
                 });
             }
             res.status(200).json({
